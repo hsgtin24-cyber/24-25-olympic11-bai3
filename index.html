@@ -253,13 +253,22 @@
         <!-- PHẦN 4: VISUALIZER -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 class="text-xl font-bold text-slate-800 mb-4 flex items-center border-b pb-2">
-                <span class="bg-cyan-100 text-cyan-700 p-2 rounded-lg mr-3">💻</span> Trình mô phỏng Thuật toán Đồng bộ (O(N))
+                <span class="bg-cyan-100 text-cyan-700 p-2 rounded-lg mr-3">💻</span> Trình mô phỏng Thuật toán
             </h2>
             
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Control Panel -->
                 <div class="lg:col-span-1 bg-slate-50 p-4 rounded-xl border space-y-4">
                     <h3 class="font-bold text-slate-700 uppercase text-sm">Tham số Đầu vào</h3>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Thuật toán Mô phỏng</label>
+                        <select id="sim-mode" class="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 text-sm font-semibold text-indigo-700 bg-white shadow-sm">
+                            <option value="2">Cách 2: Đồng bộ bước đi (Tối ưu - O(N))</option>
+                            <option value="1">Cách 1: Vét cạn (Đánh dấu 2D - O(N+M))</option>
+                        </select>
+                    </div>
+
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-semibold text-slate-500 mb-1">Số dòng (m)</label>
@@ -293,8 +302,8 @@
                         </div>
                     </div>
 
-                    <div class="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-800 mt-4">
-                        <strong>Lưu ý Mô phỏng:</strong> Trình mô phỏng sẽ hiển thị thuật toán tối ưu: biến đổi Robot 2 thành <code>S2_rev</code> đi từ (1,1) đến (m,n) để đồng bộ bước đi với Robot 1.
+                    <div id="sim-note" class="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-800 mt-4">
+                        <!-- Content inserted via JS -->
                     </div>
                 </div>
 
@@ -303,14 +312,14 @@
                     <!-- Grid Canvas Area -->
                     <div class="bg-white border rounded-xl flex-1 flex flex-col items-center justify-center p-4 min-h-[300px] overflow-auto relative">
                         <!-- Legend -->
-                        <div class="absolute top-2 left-2 flex gap-3 text-[10px] font-semibold text-slate-500 bg-white/80 p-1 rounded backdrop-blur">
-                            <div class="flex items-center gap-1"><span class="w-3 h-3 bg-blue-200 inline-block rounded-sm"></span> Đường R1</div>
-                            <div class="flex items-center gap-1"><span class="w-3 h-3 bg-red-200 inline-block rounded-sm"></span> Đường R2_rev</div>
-                            <div class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-400 inline-block rounded-sm"></span> Trùng nhau</div>
+                        <div class="absolute top-2 left-2 flex gap-3 text-[10px] font-semibold text-slate-500 bg-white/80 p-1 rounded backdrop-blur z-10">
+                            <div class="flex items-center gap-1"><span class="w-3 h-3 bg-blue-200 inline-block rounded-sm border border-blue-400"></span> Robot 1</div>
+                            <div class="flex items-center gap-1"><span class="w-3 h-3 bg-red-200 inline-block rounded-sm border border-red-400"></span> Robot 2</div>
+                            <div class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-400 inline-block rounded-sm border border-purple-600"></span> Trùng nhau</div>
                         </div>
 
                         <!-- Info Header -->
-                        <div class="mb-4 text-center">
+                        <div class="mb-4 text-center mt-6">
                             <div id="sim-status" class="text-sm font-bold text-slate-700">Vui lòng nạp dữ liệu</div>
                             <div id="sim-ans" class="text-xl font-bold text-indigo-600 mt-1">Kết quả: 0</div>
                         </div>
@@ -343,19 +352,19 @@
         hljs.highlightAll();
 
         // State variables
-        let m, n, s1, s2, s2_rev;
-        let r1, c1, r2, c2;
+        let m, n, s1, rawS2, s2_rev;
+        let simMode = 2; 
+        let states = []; // Dùng để lưu trữ toàn bộ lịch sử các bước
         let step = 0;
         let maxStep = 0;
         let ansCount = 0;
         let autoTimer = null;
-        let pathR1 = [];
-        let pathR2 = [];
 
         const term = document.getElementById('terminal-output');
         const gridContainer = document.getElementById('grid-container');
         const btnStep = document.getElementById('btn-step');
         const btnAuto = document.getElementById('btn-auto');
+        const simNote = document.getElementById('sim-note');
 
         // Terminal Log function
         function printLog(msg, type = "system") {
@@ -402,38 +411,72 @@
                 }
             }
 
-            // Draw historical paths up to current step
-            let overlapSet = new Set();
-            for(let i=0; i<=step; i++) {
-                let pr1 = pathR1[i], pr2 = pathR2[i];
-                let el1 = document.getElementById(`cell-${pr1.r}-${pr1.c}`);
-                let el2 = document.getElementById(`cell-${pr2.r}-${pr2.c}`);
-                
-                if(pr1.r === pr2.r && pr1.c === pr2.c) {
-                    el1.classList.add('cell-overlap');
-                    overlapSet.add(`${pr1.r},${pr1.c}`);
-                } else {
-                    if(!overlapSet.has(`${pr1.r},${pr1.c}`)) el1.classList.add('cell-r1');
-                    if(!overlapSet.has(`${pr2.r},${pr2.c}`)) el2.classList.add('cell-r2');
+            let tempAns = 0;
+
+            if (simMode === 1) {
+                // Render Mode 1 (Vét cạn)
+                for (let i = 0; i <= step; i++) {
+                    let s = states[i];
+                    if (s.type === 'M1_R1') {
+                        let el = document.getElementById(`cell-${s.r}-${s.c}`);
+                        el.classList.add('cell-r1');
+                    } else if (s.type === 'M1_R2') {
+                        let el = document.getElementById(`cell-${s.r}-${s.c}`);
+                        if (s.overlap) {
+                            el.classList.remove('cell-r1');
+                            el.classList.add('cell-overlap');
+                            tempAns++;
+                        } else {
+                            el.classList.add('cell-r2');
+                        }
+                    }
                 }
-            }
-
-            // Highlight current heads
-            let head1 = pathR1[step];
-            let head2 = pathR2[step];
-            
-            let elHead1 = document.getElementById(`cell-${head1.r}-${head1.c}`);
-            let elHead2 = document.getElementById(`cell-${head2.r}-${head2.c}`);
-
-            if(head1.r === head2.r && head1.c === head2.c) {
-                elHead1.classList.add('cell-current-overlap');
-                // Remove base overlap if it adds current-overlap to prevent style clash
-                elHead1.classList.remove('cell-overlap'); 
+                
+                // Highlight Current Head
+                let curState = states[step];
+                let elCur = document.getElementById(`cell-${curState.r}-${curState.c}`);
+                if (curState.type === 'M1_R1') {
+                    elCur.classList.remove('cell-r1');
+                    elCur.classList.add('cell-current-r1');
+                } else if (curState.type === 'M1_R2') {
+                    elCur.classList.remove('cell-overlap', 'cell-r2');
+                    if (curState.overlap) elCur.classList.add('cell-current-overlap');
+                    else elCur.classList.add('cell-current-r2');
+                }
+                ansCount = tempAns;
             } else {
-                elHead1.classList.add('cell-current-r1');
-                elHead1.classList.remove('cell-r1');
-                elHead2.classList.add('cell-current-r2');
-                elHead2.classList.remove('cell-r2');
+                // Render Mode 2 (Đồng bộ)
+                let overlapSet = new Set();
+                for(let i = 0; i <= step; i++) {
+                    let s = states[i];
+                    let el1 = document.getElementById(`cell-${s.r1}-${s.c1}`);
+                    let el2 = document.getElementById(`cell-${s.r2}-${s.c2}`);
+                    
+                    if(s.overlap) {
+                        el1.classList.add('cell-overlap');
+                        overlapSet.add(`${s.r1},${s.c1}`);
+                        tempAns++;
+                    } else {
+                        if(!overlapSet.has(`${s.r1},${s.c1}`)) el1.classList.add('cell-r1');
+                        if(!overlapSet.has(`${s.r2},${s.c2}`)) el2.classList.add('cell-r2');
+                    }
+                }
+
+                // Highlight Current Heads
+                let curState = states[step];
+                let elHead1 = document.getElementById(`cell-${curState.r1}-${curState.c1}`);
+                let elHead2 = document.getElementById(`cell-${curState.r2}-${curState.c2}`);
+
+                if(curState.overlap) {
+                    elHead1.classList.add('cell-current-overlap');
+                    elHead1.classList.remove('cell-overlap'); 
+                } else {
+                    elHead1.classList.add('cell-current-r1');
+                    elHead1.classList.remove('cell-r1');
+                    elHead2.classList.add('cell-current-r2');
+                    elHead2.classList.remove('cell-r2');
+                }
+                ansCount = tempAns;
             }
 
             document.getElementById('sim-ans').innerText = `Kết quả: ${ansCount}`;
@@ -446,10 +489,18 @@
             btnAuto.disabled = false;
             term.innerHTML = '';
             
+            simMode = parseInt(document.getElementById('sim-mode').value);
             m = parseInt(document.getElementById('inp-m').value);
             n = parseInt(document.getElementById('inp-n').value);
             s1 = document.getElementById('inp-s1').value.trim().toUpperCase();
-            let rawS2 = document.getElementById('inp-s2').value.trim().toUpperCase();
+            rawS2 = document.getElementById('inp-s2').value.trim().toUpperCase();
+
+            // Set Note Text
+            if (simMode === 1) {
+                simNote.innerHTML = `<strong>Lưu ý Mô phỏng: Cách 1 (Vét cạn)</strong><br> - Robot 1 đi từ (1,1) đến (m,n) và đánh dấu đường đi.<br> - Sau đó Robot 2 đi từ (m,n) về (1,1), nếu gặp ô đã đánh dấu thì tăng biến đếm.`;
+            } else {
+                simNote.innerHTML = `<strong>Lưu ý Mô phỏng: Cách 2 (Đồng bộ)</strong><br> - Biến đổi Robot 2 thành <code>S2_rev</code> đi từ (1,1) đến (m,n).<br> - Cả hai đi từng bước đồng thời, cắt nhau khi tọa độ trùng nhau hoàn toàn.`;
+            }
 
             // Validations
             if(isNaN(m) || isNaN(n) || m < 2 || n < 2) {
@@ -458,46 +509,78 @@
             if(m > 20 || n > 20) {
                 printLog("Lỗi: Canvas giới hạn m, n <= 20 để tránh lag UI.", "error"); return;
             }
-            maxStep = m + n - 2;
-            if(s1.length !== maxStep || rawS2.length !== maxStep) {
-                printLog(`Lỗi: Độ dài S1, S2 phải bằng m + n - 2 = ${maxStep}`, "error"); return;
+            let pathLen = m + n - 2;
+            if(s1.length !== pathLen || rawS2.length !== pathLen) {
+                printLog(`Lỗi: Độ dài S1, S2 phải bằng m + n - 2 = ${pathLen}`, "error"); return;
             }
             if(!/^[DR]+$/.test(s1)) { printLog("Lỗi: S1 chỉ chứa D, R", "error"); return; }
             if(!/^[LU]+$/.test(rawS2)) { printLog("Lỗi: S2 chỉ chứa L, U", "error"); return; }
 
-            // Transform S2 -> S2_rev
-            s2_rev = rawS2.split('').reverse().map(c => c === 'U' ? 'D' : 'R').join('');
-            
-            printLog(`Khởi tạo lưới ${m}x${n}. Tổng số bước: ${maxStep}`, "system");
-            printLog(`S1 gốc: ${s1}`, "info");
-            printLog(`S2 gốc: ${rawS2} -> Đảo ngược & Đổi hướng: ${s2_rev}`, "warn");
-
-            // Reset States
-            step = 0;
-            ansCount = 1;
-            pathR1 = [{r: 1, c: 1}];
-            pathR2 = [{r: 1, c: 1}];
-            
-            // Pre-calculate full paths to ensure validity bounds
-            let tr1 = 1, tc1 = 1, tr2 = 1, tc2 = 1;
-            for(let i=0; i<maxStep; i++) {
+            // Validate endpoints logic theoretically
+            let tr1 = 1, tc1 = 1, tr2 = m, tc2 = n;
+            for(let i=0; i<pathLen; i++) {
                 if(s1[i] === 'R') tc1++; else tr1++;
-                if(s2_rev[i] === 'R') tc2++; else tr2++;
-                pathR1.push({r: tr1, c: tc1});
-                pathR2.push({r: tr2, c: tc2});
+                if(rawS2[i] === 'L') tc2--; else tr2--;
             }
-
-            if(tr1 !== m || tc1 !== n || tr2 !== m || tc2 !== n) {
-                printLog(`Lỗi Logic Đề bài: Đường đi không dẫn đúng đến đích (${m},${n})!`, "error");
+            if(tr1 !== m || tc1 !== n || tr2 !== 1 || tc2 !== 1) {
+                printLog(`Lỗi Logic Đề bài: Đường đi không khớp kích thước bảng!`, "error");
                 btnStep.disabled = true; btnAuto.disabled = true;
                 return;
             }
+
+            // Generate States Sequence
+            states = [];
+            
+            if (simMode === 1) {
+                printLog(`Đã chọn Cách 1: Vét cạn O(N+M)`, "warn");
+                let visited = new Set();
+                let r1 = 1, c1 = 1;
+                visited.add(`${r1},${c1}`);
+                states.push({ type: 'M1_R1', r: r1, c: c1 });
+                
+                for(let i=0; i<pathLen; i++) {
+                    if(s1[i] === 'R') c1++; else r1++;
+                    visited.add(`${r1},${c1}`);
+                    states.push({ type: 'M1_R1', r: r1, c: c1 });
+                }
+
+                let r2 = m, c2 = n;
+                let overlap = visited.has(`${r2},${c2}`);
+                states.push({ type: 'M1_R2', r: r2, c: c2, overlap: overlap });
+                
+                for(let i=0; i<pathLen; i++) {
+                    if(rawS2[i] === 'L') c2--; else r2--;
+                    overlap = visited.has(`${r2},${c2}`);
+                    states.push({ type: 'M1_R2', r: r2, c: c2, overlap: overlap });
+                }
+            } else {
+                printLog(`Đã chọn Cách 2: Đồng bộ bước đi O(N)`, "warn");
+                s2_rev = rawS2.split('').reverse().map(c => c === 'U' ? 'D' : 'R').join('');
+                printLog(`S2 gốc: ${rawS2} -> Đảo ngược & Đổi hướng: ${s2_rev}`, "info");
+
+                let r1 = 1, c1 = 1, r2 = 1, c2 = 1;
+                states.push({ type: 'M2', r1: r1, c1: c1, r2: r2, c2: c2, overlap: true });
+
+                for(let i=0; i<pathLen; i++) {
+                    if(s1[i] === 'R') c1++; else r1++;
+                    if(s2_rev[i] === 'R') c2++; else r2++;
+                    let overlap = (r1 === r2 && c1 === c2);
+                    states.push({ type: 'M2', r1: r1, c1: c1, r2: r2, c2: c2, overlap: overlap });
+                }
+            }
+
+            step = 0;
+            maxStep = states.length - 1;
 
             buildGridUI();
             updateGridUI();
             
             document.getElementById('sim-status').innerText = `Đã nạp xong. Sẵn sàng chạy.`;
-            printLog("Bước 0: Cả hai cùng bắt đầu tại (1,1) -> TRÙNG NHAU (+1)", "highlight");
+            if (simMode === 1) {
+                printLog(`Bước 0: R1 bắt đầu tại (1,1) và đánh dấu ô`, "system");
+            } else {
+                printLog("Bước 0: Cả hai cùng bắt đầu tại (1,1) -> TRÙNG NHAU (+1)", "highlight");
+            }
         }
 
         function stepSim() {
@@ -511,17 +594,20 @@
             }
 
             step++;
-            let p1 = pathR1[step];
-            let p2 = pathR2[step];
+            let s = states[step];
             
-            let match = (p1.r === p2.r && p1.c === p2.c);
-            if(match) ansCount++;
-
-            let logMsg = `Bước ${step}: R1(${p1.r},${p1.c}) | R2_rev(${p2.r},${p2.c})`;
-            if(match) {
-                printLog(logMsg + " -> TRÙNG NHAU (+1)", "highlight");
+            if (simMode === 1) {
+                if (s.type === 'M1_R1') {
+                    printLog(`Bước ${step}: R1 đi đến (${s.r},${s.c})`, "info");
+                } else {
+                    let msg = `Bước ${step}: R2 đi đến (${s.r},${s.c})`;
+                    if (s.overlap) printLog(msg + " -> GẶP ĐƯỜNG R1 (+1)", "highlight");
+                    else printLog(msg, "system");
+                }
             } else {
-                printLog(logMsg, "system");
+                let msg = `Bước ${step}: R1(${s.r1},${s.c1}) | R2_rev(${s.r2},${s.c2})`;
+                if(s.overlap) printLog(msg + " -> TRÙNG NHAU (+1)", "highlight");
+                else printLog(msg, "system");
             }
 
             updateGridUI();
@@ -542,13 +628,16 @@
             btnAuto.disabled = true;
             document.getElementById('sim-status').innerText = `Đang chạy tự động...`;
             
+            // Adjust speed based on mode to keep total time reasonable
+            let speed = (simMode === 1) ? 200 : 500;
+
             autoTimer = setInterval(() => {
                 if(step < maxStep) {
                     stepSim();
                 } else {
                     clearInterval(autoTimer);
                 }
-            }, 500); // 500ms delay per step
+            }, speed);
         }
 
         // Initialize empty state on load
